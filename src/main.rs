@@ -1,6 +1,6 @@
-use broadcast::BroadcastMessages;
+use broadcast::BroadcastService;
 use counter::Counter;
-use message::{Message, MessageBody, ResponseBody};
+use message::{Message, MessageBody};
 use node::{Node, NODE};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -8,6 +8,7 @@ mod broadcast;
 mod counter;
 mod message;
 mod node;
+mod topology;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -15,50 +16,53 @@ async fn main() -> Result<(), std::io::Error> {
     let mut lines = stdin.lines();
 
     let mut counter = Counter::new();
-    let mut broadcast = BroadcastMessages::new();
+    let mut broadcast = BroadcastService::new();
 
     while let Some(line) = lines.next_line().await? {
         let message: Message = serde_json::from_str(&line)?;
 
         match &message.body {
             MessageBody::echo { echo, .. } => {
-                let response = message.response(&ResponseBody::echo_ok { echo: echo.clone() });
-                response.send();
+                message.respond_with_echo_ok(echo.to_string());
             }
 
             MessageBody::init { node_id, .. } => {
-                let response = message.response(&ResponseBody::init_ok {});
-                NODE.get_or_init(|| Node::new(node_id));
-                response.send();
+                NODE.get_or_init(|| {
+                    broadcast.topology.set_id(node_id.to_string());
+                    return Node::new(node_id);
+                });
+
+                message.respond_with_init_ok();
             }
 
             MessageBody::generate { .. } => {
                 let unique_id = counter.generate_unique_id(&NODE.get().unwrap());
 
-                let response = message.response(&ResponseBody::generate_ok { id: unique_id });
-                response.send();
+                message.respond_with_generate_ok(unique_id);
             }
 
-            MessageBody::topology { .. } => {
-                let response = message.response(&ResponseBody::topology_ok {});
-                response.send();
+            MessageBody::topology { topology, .. } => {
+                broadcast.topology.set_topology(topology.clone());
+                message.respond_with_topology_ok();
             }
 
             MessageBody::broadcast {
                 message: broadcast_message,
                 ..
             } => {
-                broadcast.add(*broadcast_message);
+                broadcast.add_message(*broadcast_message);
 
-                let response = message.response(&ResponseBody::broadcast_ok {});
-                response.send();
+                message.respond_with_broadcast_ok();
             }
 
             MessageBody::read { .. } => {
-                let messages = broadcast.get();
+                let messages = broadcast.get_message();
 
-                let response = message.response(&ResponseBody::read_ok { messages });
-                response.send();
+                message.respond_with_read_ok(Vec::from_iter(messages.iter().map(|v| *v)));
+            }
+
+            MessageBody::node_broadcast { message } => {
+                broadcast.add_message(*message);
             }
         }
     }

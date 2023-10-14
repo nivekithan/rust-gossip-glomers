@@ -1,27 +1,40 @@
 use std::collections::HashMap;
 
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Message {
-    src: String,
-    dest: String,
-    pub body: MessageBody,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Response {
     src: String,
     dest: String,
-    pub body: ResponseMessageBody,
+    pub body: ResponseBody,
 }
 
 impl Response {
+    pub fn from_message(message: &Message, response_body: ResponseBody) -> Response {
+        let response = Response {
+            src: message.dest.clone(),
+            dest: message.src.clone(),
+            body: response_body,
+        };
+
+        return response;
+    }
+
     pub fn send(&self) {
         let self_in_str = serde_json::to_string(self).unwrap();
         println!("{self_in_str}");
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Message {
+    src: String,
+    dest: String,
+    pub body: MessageBody,
+}
+
 impl Message {
+    pub fn new(src: String, dest: String, body: MessageBody) -> Self {
+        return Self { src, dest, body };
+    }
     fn msg_id(&self) -> usize {
         match self.body {
             MessageBody::echo { msg_id, .. }
@@ -30,83 +43,83 @@ impl Message {
             | MessageBody::topology { msg_id, .. }
             | MessageBody::broadcast { msg_id, .. }
             | MessageBody::read { msg_id } => return msg_id,
+
+            MessageBody::node_broadcast { .. } => unreachable!(),
         }
     }
-    pub fn response(&self, body: &ResponseBody) -> Response {
-        match body {
-            ResponseBody::echo_ok { echo } => {
-                let response_message = Response {
-                    src: self.dest.clone(),
-                    dest: self.src.clone(),
-                    body: ResponseMessageBody::echo_ok {
-                        in_reply_to: self.msg_id(),
-                        echo: echo.clone(),
-                    },
-                };
 
-                return response_message;
-            }
-            ResponseBody::init_ok {} => {
-                let response_message = Response {
-                    src: self.dest.clone(),
-                    dest: self.src.clone(),
-                    body: ResponseMessageBody::init_ok {
-                        in_reply_to: self.msg_id(),
-                    },
-                };
+    pub fn send(&self) {
+        let message = serde_json::to_string(self).unwrap();
 
-                return response_message;
-            }
-            ResponseBody::generate_ok { id } => {
-                let response_message = Response {
-                    src: self.dest.clone(),
-                    dest: self.src.clone(),
-                    body: ResponseMessageBody::generate_ok {
-                        id: id.clone(),
-                        in_reply_to: self.msg_id(),
-                    },
-                };
+        println!("{message}");
+    }
+    pub fn respond_with_echo_ok(&self, echo: String) {
+        let response_message = Response::from_message(
+            self,
+            ResponseBody::echo_ok {
+                in_reply_to: self.msg_id(),
+                echo,
+            },
+        );
 
-                return response_message;
-            }
+        response_message.send();
+    }
 
-            ResponseBody::topology_ok {} => {
-                let response_message = Response {
-                    src: self.dest.clone(),
-                    dest: self.src.clone(),
-                    body: ResponseMessageBody::topology_ok {
-                        in_reply_to: self.msg_id(),
-                    },
-                };
+    pub fn respond_with_init_ok(&self) {
+        let response_message = Response::from_message(
+            self,
+            ResponseBody::init_ok {
+                in_reply_to: self.msg_id(),
+            },
+        );
 
-                return response_message;
-            }
+        response_message.send();
+    }
 
-            ResponseBody::broadcast_ok {} => {
-                let response_message = Response {
-                    src: self.dest.clone(),
-                    dest: self.src.clone(),
-                    body: ResponseMessageBody::broadcast_ok {
-                        in_reply_to: self.msg_id(),
-                    },
-                };
+    pub fn respond_with_generate_ok(&self, id: String) {
+        let response_message = Response::from_message(
+            self,
+            ResponseBody::generate_ok {
+                id,
+                in_reply_to: self.msg_id(),
+            },
+        );
 
-                return response_message;
-            }
+        response_message.send();
+    }
 
-            ResponseBody::read_ok { messages } => {
-                let response_message = Response {
-                    src: self.dest.clone(),
-                    dest: self.src.clone(),
-                    body: ResponseMessageBody::read_ok {
-                        messages: (*messages).clone(),
-                        in_reply_to: self.msg_id(),
-                    },
-                };
+    pub fn respond_with_topology_ok(&self) {
+        let response_message = Response::from_message(
+            self,
+            ResponseBody::topology_ok {
+                in_reply_to: self.msg_id(),
+            },
+        );
 
-                return response_message;
-            }
-        }
+        response_message.send();
+    }
+
+    pub fn respond_with_broadcast_ok(&self) {
+        let response_message = Response::from_message(
+            self,
+            ResponseBody::broadcast_ok {
+                in_reply_to: self.msg_id(),
+            },
+        );
+
+        response_message.send();
+    }
+
+    pub fn respond_with_read_ok(&self, messages: Vec<usize>) {
+        let response_message = Response::from_message(
+            self,
+            ResponseBody::read_ok {
+                messages,
+                in_reply_to: self.msg_id(),
+            },
+        );
+
+        response_message.send();
     }
 }
 
@@ -139,6 +152,10 @@ pub enum MessageBody {
         msg_id: usize,
     },
 
+    node_broadcast {
+        message: usize,
+    },
+
     read {
         msg_id: usize,
     },
@@ -147,7 +164,7 @@ pub enum MessageBody {
 #[allow(non_camel_case_types)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type")]
-pub enum ResponseMessageBody {
+pub enum ResponseBody {
     init_ok {
         in_reply_to: usize,
     },
@@ -169,14 +186,4 @@ pub enum ResponseMessageBody {
     topology_ok {
         in_reply_to: usize,
     },
-}
-
-#[allow(non_camel_case_types)]
-pub enum ResponseBody<'a> {
-    echo_ok { echo: String },
-    init_ok {},
-    generate_ok { id: String },
-    topology_ok {},
-    broadcast_ok {},
-    read_ok { messages: &'a Vec<usize> },
 }
