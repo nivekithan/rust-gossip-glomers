@@ -1,8 +1,10 @@
+use broadcast::BroadcastMessages;
 use counter::Counter;
 use message::{Message, MessageBody, ResponseBody};
 use node::{Node, NODE};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+mod broadcast;
 mod counter;
 mod message;
 mod node;
@@ -13,6 +15,7 @@ async fn main() -> Result<(), std::io::Error> {
     let mut lines = stdin.lines();
 
     let mut counter = Counter::new();
+    let mut broadcast = BroadcastMessages::new();
 
     while let Some(line) = lines.next_line().await? {
         let message: Message = serde_json::from_str(&line)?;
@@ -36,9 +39,34 @@ async fn main() -> Result<(), std::io::Error> {
                 response.send().unwrap();
             }
 
+            MessageBody::topology { .. } => {
+                let response = message.response(&ResponseBody::topology_ok {});
+                response.send().unwrap();
+            }
+
+            MessageBody::broadcast {
+                message: broadcast_message,
+                ..
+            } => {
+                broadcast.add(*broadcast_message);
+
+                let response = message.response(&ResponseBody::broadcast_ok {});
+                response.send().unwrap();
+            }
+
+            MessageBody::read { .. } => {
+                let messages = broadcast.get();
+
+                let response = message.response(&ResponseBody::read_ok { messages });
+                response.send().unwrap();
+            }
+
             MessageBody::init_ok { .. }
             | MessageBody::echo_ok { .. }
-            | MessageBody::generate_ok { .. } => unreachable!(),
+            | MessageBody::generate_ok { .. }
+            | MessageBody::topology_ok { .. }
+            | MessageBody::broadcast_ok { .. }
+            | MessageBody::read_ok { .. } => unreachable!(),
         }
     }
 

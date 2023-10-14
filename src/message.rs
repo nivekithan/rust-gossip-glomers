@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde_json::Result;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -12,11 +14,17 @@ impl Message {
         match self.body {
             MessageBody::echo { msg_id, .. }
             | MessageBody::init { msg_id, .. }
-            | MessageBody::generate { msg_id, .. } => return msg_id,
+            | MessageBody::generate { msg_id, .. }
+            | MessageBody::topology { msg_id, .. }
+            | MessageBody::broadcast { msg_id, .. }
+            | MessageBody::read { msg_id } => return msg_id,
 
             MessageBody::init_ok { .. }
             | MessageBody::echo_ok { .. }
-            | MessageBody::generate_ok { .. } => {
+            | MessageBody::generate_ok { .. }
+            | MessageBody::topology_ok { .. }
+            | MessageBody::read_ok { .. }
+            | MessageBody::broadcast_ok { .. } => {
                 unreachable!("Trying to get msg_id of MessageBody:: which does not msg_id field")
             }
         }
@@ -58,6 +66,43 @@ impl Message {
 
                 return response_message;
             }
+
+            ResponseBody::topology_ok {} => {
+                let response_message = Message {
+                    src: self.dest.clone(),
+                    dest: self.src.clone(),
+                    body: MessageBody::topology_ok {
+                        in_reply_to: self.msg_id(),
+                    },
+                };
+
+                return response_message;
+            }
+
+            ResponseBody::broadcast_ok {} => {
+                let response_message = Message {
+                    src: self.dest.clone(),
+                    dest: self.src.clone(),
+                    body: MessageBody::broadcast_ok {
+                        in_reply_to: self.msg_id(),
+                    },
+                };
+
+                return response_message;
+            }
+
+            ResponseBody::read_ok { messages } => {
+                let response_message = Message {
+                    src: self.dest.clone(),
+                    dest: self.src.clone(),
+                    body: MessageBody::read_ok {
+                        messages: (*messages).clone(),
+                        in_reply_to: self.msg_id(),
+                    },
+                };
+
+                return response_message;
+            }
         }
     }
 
@@ -83,6 +128,7 @@ pub enum MessageBody {
     init_ok {
         in_reply_to: usize,
     },
+
     echo {
         msg_id: usize,
         echo: String,
@@ -91,6 +137,7 @@ pub enum MessageBody {
         in_reply_to: usize,
         echo: String,
     },
+
     generate {
         msg_id: usize,
     },
@@ -98,11 +145,38 @@ pub enum MessageBody {
         id: String,
         in_reply_to: usize,
     },
+
+    topology {
+        topology: HashMap<String, Vec<String>>,
+        msg_id: usize,
+    },
+    topology_ok {
+        in_reply_to: usize,
+    },
+
+    broadcast {
+        message: usize,
+        msg_id: usize,
+    },
+    broadcast_ok {
+        in_reply_to: usize,
+    },
+
+    read {
+        msg_id: usize,
+    },
+    read_ok {
+        messages: Vec<usize>,
+        in_reply_to: usize,
+    },
 }
 
 #[allow(non_camel_case_types)]
-pub enum ResponseBody {
+pub enum ResponseBody<'a> {
     echo_ok { echo: String },
     init_ok {},
     generate_ok { id: String },
+    topology_ok {},
+    broadcast_ok {},
+    read_ok { messages: &'a Vec<usize> },
 }
