@@ -23,25 +23,25 @@ async fn main() -> Result<(), std::io::Error> {
         match &message.body {
             MessageBody::echo { echo, .. } => {
                 let response = message.response(&ResponseBody::echo_ok { echo: echo.clone() });
-                response.send().unwrap();
+                response.send();
             }
 
             MessageBody::init { node_id, .. } => {
                 let response = message.response(&ResponseBody::init_ok {});
                 NODE.get_or_init(|| Node::new(node_id));
-                response.send().unwrap();
+                response.send();
             }
 
             MessageBody::generate { .. } => {
                 let unique_id = counter.generate_unique_id(&NODE.get().unwrap());
 
                 let response = message.response(&ResponseBody::generate_ok { id: unique_id });
-                response.send().unwrap();
+                response.send();
             }
 
             MessageBody::topology { .. } => {
                 let response = message.response(&ResponseBody::topology_ok {});
-                response.send().unwrap();
+                response.send();
             }
 
             MessageBody::broadcast {
@@ -51,22 +51,15 @@ async fn main() -> Result<(), std::io::Error> {
                 broadcast.add(*broadcast_message);
 
                 let response = message.response(&ResponseBody::broadcast_ok {});
-                response.send().unwrap();
+                response.send();
             }
 
             MessageBody::read { .. } => {
                 let messages = broadcast.get();
 
                 let response = message.response(&ResponseBody::read_ok { messages });
-                response.send().unwrap();
+                response.send();
             }
-
-            MessageBody::init_ok { .. }
-            | MessageBody::echo_ok { .. }
-            | MessageBody::generate_ok { .. }
-            | MessageBody::topology_ok { .. }
-            | MessageBody::broadcast_ok { .. }
-            | MessageBody::read_ok { .. } => unreachable!(),
         }
     }
 
