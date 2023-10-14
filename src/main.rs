@@ -28,7 +28,6 @@ async fn main() -> Result<(), std::io::Error> {
 
             MessageBody::init { node_id, .. } => {
                 NODE.get_or_init(|| {
-                    broadcast.topology.set_id(node_id.to_string());
                     return Node::new(node_id);
                 });
 
