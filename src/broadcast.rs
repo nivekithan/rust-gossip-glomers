@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     counter::Counter,
@@ -12,7 +12,7 @@ pub struct BroadcastService {
     messages: HashSet<usize>,
     pub topology: Topology,
     pending_request: PendingRequestService,
-    counter: Counter,
+    counter: Arc<Counter>,
 }
 
 impl BroadcastService {
@@ -21,7 +21,7 @@ impl BroadcastService {
             topology: Topology::new(),
             messages: HashSet::new(),
             pending_request: PendingRequestService::new(),
-            counter: Counter::new(),
+            counter: Arc::new(Counter::new()),
         };
     }
 
@@ -38,7 +38,7 @@ impl BroadcastService {
 
     pub async fn broadcast(&mut self, message: usize) {
         let pending_request = &mut self.pending_request;
-        let counter = &mut self.counter;
+        let counter = &self.counter;
         let current_node_id = &NODE.get().unwrap().id;
 
         for other_node_id in self.topology.get().iter() {
@@ -54,7 +54,7 @@ impl BroadcastService {
                 },
             );
 
-            message.send(pending_request).await;
+            message.send(pending_request, Arc::downgrade(counter)).await;
         }
     }
 

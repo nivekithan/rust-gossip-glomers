@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Weak, time::Duration};
 
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, time::timeout};
 
-use crate::pending_request::PendingRequestService;
+use crate::{counter::Counter, pending_request::PendingRequestService};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Response {
@@ -29,7 +29,7 @@ impl Response {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Message {
     src: String,
     dest: String,
@@ -68,8 +68,12 @@ impl Message {
         println!("{message}");
     }
 
-    pub async fn send(&self, pending_request_service: &mut PendingRequestService) {
-        let (sender, receiver) = oneshot::channel::<()>();
+    pub async fn send(
+        &self,
+        pending_request_service: &mut PendingRequestService,
+        counter: Weak<Counter>,
+    ) {
+        let (sender, mut receiver) = oneshot::channel::<()>();
 
         let message_id = self.msg_id();
         let message = serde_json::to_string(self).unwrap();
@@ -79,7 +83,33 @@ impl Message {
         eprintln!("[OUTPUT] {message}");
         println!("{message}");
 
-        tokio::task::spawn(receiver);
+        let cloned_message = (*self).clone();
+        tokio::task::spawn(async move {
+            let message = cloned_message;
+            let counter = counter.upgrade().unwrap();
+
+            while let Err(_) = timeout(Duration::from_millis(100), &mut receiver).await {
+                let message = message.new_msg_id(&counter);
+                let message = serde_json::to_string(&message).unwrap();
+
+                eprintln!("[OUTPUT] {message}");
+                println!("{message}");
+            }
+        });
+    }
+
+    pub fn new_msg_id(&self, counter: &Counter) -> Self {
+        match self.body {
+            MessageBody::node_broadcast { message,req_id, .. } => {
+                return Message {
+                    src: self.src.clone(),
+                    dest: self.dest.clone(),
+                    body: MessageBody::node_broadcast { message , req_id, msg_id: counter.generate_unique_msg_id()  }
+                }
+            },
+
+            _ => panic!("Can calll remove_msg_id only when Message.body is of variant MessageBody::node_broadcast"),
+        }
     }
 
     pub fn respond_with_echo_ok(&self, echo: String) {
@@ -157,6 +187,10 @@ impl Message {
             self.src.clone(),
             MessageBody::node_broadcast_ok {
                 in_reply_to: self.msg_id(),
+                for_req: match &self.body {
+                    MessageBody::node_broadcast { req_id, .. } => *req_id,
+                    _ => panic!("responsd_with_node_broadcast_ok is called for MessageBody whose variant is not MessageBody::node_broadcast"),
+                },
             },
         );
 
@@ -165,7 +199,7 @@ impl Message {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum MessageBody {
     init {

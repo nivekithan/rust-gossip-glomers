@@ -16,7 +16,7 @@ async fn main() -> Result<(), std::io::Error> {
     let stdin = BufReader::new(tokio::io::stdin());
     let mut lines = stdin.lines();
 
-    let mut counter = Counter::new();
+    let counter = Counter::new();
     let mut broadcast = BroadcastService::new();
 
     while let Some(line) = lines.next_line().await? {
