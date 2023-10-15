@@ -1,14 +1,18 @@
 use std::collections::HashSet;
 
 use crate::{
+    counter::Counter,
     message::{Message, MessageBody},
     node::NODE,
+    pending_request::PendingRequestService,
     topology::Topology,
 };
 
 pub struct BroadcastService {
-    pub topology: Topology,
     messages: HashSet<usize>,
+    pub topology: Topology,
+    pending_request: PendingRequestService,
+    counter: Counter,
 }
 
 impl BroadcastService {
@@ -16,13 +20,15 @@ impl BroadcastService {
         return BroadcastService {
             topology: Topology::new(),
             messages: HashSet::new(),
+            pending_request: PendingRequestService::new(),
+            counter: Counter::new(),
         };
     }
 
-    pub fn add_message(&mut self, new_message: usize) {
+    pub async fn add_message(&mut self, new_message: usize) {
         if !self.messages.contains(&new_message) {
-            self.broadcast(new_message);
             self.messages.insert(new_message);
+            self.broadcast(new_message).await;
         }
     }
 
@@ -30,16 +36,24 @@ impl BroadcastService {
         return &self.messages;
     }
 
-    pub fn broadcast(&self, message: usize) {
+    pub async fn broadcast(&mut self, message: usize) {
+        let pending_request = &mut self.pending_request;
+        let counter = &mut self.counter;
         let current_node_id = &NODE.get().unwrap().id;
-        self.topology.get().iter().for_each(|other_node_id| {
+
+        for other_node_id in self.topology.get().iter() {
+            let msg_id = counter.generate_unique_msg_id();
             let message = Message::new(
                 current_node_id.clone(),
                 other_node_id.clone(),
-                MessageBody::node_broadcast { message },
+                MessageBody::node_broadcast { message, msg_id },
             );
 
-            message.send();
-        })
+            message.send(pending_request).await;
+        }
+    }
+
+    pub fn accept_broadcast_response(&mut self, msg_id: usize) {
+        self.pending_request.resolve_pending_request(msg_id);
     }
 }

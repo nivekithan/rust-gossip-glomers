@@ -8,6 +8,7 @@ mod broadcast;
 mod counter;
 mod message;
 mod node;
+mod pending_request;
 mod topology;
 
 #[tokio::main]
@@ -19,6 +20,7 @@ async fn main() -> Result<(), std::io::Error> {
     let mut broadcast = BroadcastService::new();
 
     while let Some(line) = lines.next_line().await? {
+        eprintln!("[INPUT] {line}");
         let message: Message = serde_json::from_str(&line)?;
 
         match &message.body {
@@ -49,9 +51,8 @@ async fn main() -> Result<(), std::io::Error> {
                 message: broadcast_message,
                 ..
             } => {
-                broadcast.add_message(*broadcast_message);
-
                 message.respond_with_broadcast_ok();
+                broadcast.add_message(*broadcast_message).await;
             }
 
             MessageBody::read { .. } => {
@@ -60,8 +61,16 @@ async fn main() -> Result<(), std::io::Error> {
                 message.respond_with_read_ok(Vec::from_iter(messages.iter().map(|v| *v)));
             }
 
-            MessageBody::node_broadcast { message } => {
-                broadcast.add_message(*message);
+            MessageBody::node_broadcast {
+                message: broadcast_message,
+                ..
+            } => {
+                message.respond_with_node_broadcast_ok();
+                broadcast.add_message(*broadcast_message).await;
+            }
+
+            MessageBody::node_broadcast_ok { in_reply_to } => {
+                broadcast.accept_broadcast_response(*in_reply_to);
             }
         }
     }
