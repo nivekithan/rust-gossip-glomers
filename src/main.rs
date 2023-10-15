@@ -69,8 +69,8 @@ async fn main() -> Result<(), std::io::Error> {
                 broadcast.add_message(*broadcast_message).await;
             }
 
-            MessageBody::node_broadcast_ok { in_reply_to } => {
-                broadcast.accept_broadcast_response(*in_reply_to);
+            MessageBody::node_broadcast_ok { for_req, .. } => {
+                broadcast.accept_broadcast_response(*for_req);
             }
         }
     }

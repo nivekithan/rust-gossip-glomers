@@ -43,10 +43,15 @@ impl BroadcastService {
 
         for other_node_id in self.topology.get().iter() {
             let msg_id = counter.generate_unique_msg_id();
+            let req_id = counter.generate_unique_msg_id();
             let message = Message::new(
                 current_node_id.clone(),
                 other_node_id.clone(),
-                MessageBody::node_broadcast { message, msg_id },
+                MessageBody::node_broadcast {
+                    message,
+                    msg_id,
+                    req_id,
+                },
             );
 
             message.send(pending_request).await;

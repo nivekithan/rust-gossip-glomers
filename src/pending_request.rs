@@ -12,19 +12,19 @@ impl PendingRequestService {
         };
     }
 
-    pub fn add_pending_request(&mut self, msg_id: usize, sender: oneshot::Sender<()>) {
-        self.pending_request.insert(msg_id, sender);
+    pub fn add_pending_request(&mut self, req_id: usize, sender: oneshot::Sender<()>) {
+        self.pending_request.insert(req_id, sender);
     }
 
-    pub fn resolve_pending_request(&mut self, msg_id: usize) {
-        let sender = self.pending_request.remove(&msg_id);
+    pub fn resolve_pending_request(&mut self, req_id: usize) {
+        let sender = self.pending_request.remove(&req_id);
 
         if let Some(sender) = sender {
             sender.send(()).unwrap();
         }
     }
 
-    pub fn remove_request(&mut self, msg_id: usize) {
-        self.pending_request.remove(&msg_id);
+    pub fn remove_request(&mut self, req_id: usize) {
+        self.pending_request.remove(&req_id);
     }
 }

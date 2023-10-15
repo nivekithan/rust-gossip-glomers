@@ -79,9 +79,7 @@ impl Message {
         eprintln!("[OUTPUT] {message}");
         println!("{message}");
 
-        receiver
-            .await
-            .expect(format!("Message.send failed for msg_id: {message_id}").as_str());
+        tokio::task::spawn(receiver);
     }
 
     pub fn respond_with_echo_ok(&self, echo: String) {
@@ -202,10 +200,12 @@ pub enum MessageBody {
     node_broadcast {
         message: usize,
         msg_id: usize,
+        req_id: usize,
     },
 
     node_broadcast_ok {
         in_reply_to: usize,
+        for_req: usize,
     },
 }
 
